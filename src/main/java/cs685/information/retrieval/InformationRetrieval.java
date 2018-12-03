@@ -115,7 +115,7 @@ public class InformationRetrieval
                 		int end = begin + r.getLineCount();
                 		// Find if our hunk block intersects with this class's block
                 		if ((startLine >= begin && startLine <= end) || (endLine >= begin && endLine <= end)) {
-                			classes.add(className);
+                			classes.add(Indexer.parseCamelCase(className).toLowerCase());
                 		}
                 	}
                 }
@@ -125,7 +125,7 @@ public class InformationRetrieval
                 		int end = begin + r.getLineCount();
                 		// Find if our hunk block intersects with this class's block
                 		if ((startLine >= begin && startLine <= end) || (endLine >= begin && endLine <= end)) {
-                			methods.add(methodName);
+                			methods.add(Indexer.parseCamelCase(methodName).toLowerCase());
                 		}
                 	}
                 }
@@ -151,7 +151,7 @@ public class InformationRetrieval
                 for (String line : toLines) {
                 	// Remove punctuation
                 	line = line.replaceAll("[^A-Za-z\\s]",  " ");
-                	line = line.trim();
+                	line = Indexer.parseCamelCase(line.trim()).toLowerCase();
         			query.append(line + " ");
                 }
                 queries.add(query.toString());
@@ -170,6 +170,8 @@ public class InformationRetrieval
     		System.out.println("\tResults: " + results.totalHits);
     		for (ScoreDoc doc : results.scoreDocs) {
     			System.out.println("\t" + doc);
+    			String docName = indexer.getDocumentById(doc.doc);
+    			System.out.println("\tName=[" + docName + "]");
     		}
     	}
     	indexer.close();

@@ -6,7 +6,9 @@ import java.io.StringReader;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Stack;
 
@@ -41,8 +43,11 @@ public class Indexer {
 	private IndexSearcher searcher;
 	private QueryParser parser;
 	//private StandardAnalyzer standardAnalyzer;
+	private Map<Integer, String> testDocuments;
 	
 	public Indexer() throws IOException {
+		// Create a map of document ID to test method name
+		testDocuments = new HashMap<Integer, String>();
 		// New index
 		StandardAnalyzer standardAnalyzer = new StandardAnalyzer();
 		File inputDir = new File("C:\\Users\\smoke\\Documents\\CS 685\\cs685-2018\\information-retrieval\\input");
@@ -70,9 +75,10 @@ public class Indexer {
             	List<ClassOrInterfaceDeclaration> classes = cu.findAll(ClassOrInterfaceDeclaration.class);
             	List<String> classNames = new ArrayList<String>();
             	for (ClassOrInterfaceDeclaration classDelcaration : classes) {
-            		classNames.add(classDelcaration.getName().asString());
+            		String className = classDelcaration.getName().asString();
+            		classNames.add(parseCamelCase(className).toLowerCase());
             	}
-            	String classNamesContent = String.join(" ", classNames).toLowerCase();
+            	String classNamesContent = String.join(" ", classNames);
             	// Build a document for each method (TODO: if not @Before, etc)
             	List<MethodDeclaration> methods = cu.findAll(MethodDeclaration.class);
             	// For now, just adding to indexer if beginning with "test.."
@@ -82,24 +88,27 @@ public class Indexer {
             			// Get the method's class name
             			methodContent.append(classNamesContent + "\n");
             			// Get method's name
-            			methodContent.append(method.getName().asString() + "\n");
+            			String methodName = method.getName().asString();
+            			methodContent.append(parseCamelCase(methodName).toLowerCase() + "\n");
             			// Get method's parameters
             			for (Parameter param : method.getParameters()) {
-                            methodContent.append(param.toString().replaceAll("[^A-Za-z ]", " ").trim().toLowerCase() + " ");
+            				String params = param.toString().replaceAll("[^A-Za-z ]", " ").trim();
+                            methodContent.append(parseCamelCase(params).toLowerCase() + " ");
                         }
             			// Get method's documentation
             			Optional<Comment> javadocComment = method.getComment();
             			if (javadocComment.isPresent()) {
             				String javadoc = javadocComment.get().getContent();
-            				javadoc = javadoc.replaceAll("[^A-Za-z ]", " ").trim().toLowerCase();
+            				javadoc = javadoc.replaceAll("[^A-Za-z ]", " ").trim();
             				// TODO: build method to parse out camelcase
-            				methodContent.append(javadoc + "\n");
+            				methodContent.append(parseCamelCase(javadoc).toLowerCase() + "\n");
             			}
             			// Get method's content
             			Optional<BlockStmt> methodBlock = method.getBody();
             			if (methodBlock.isPresent()) {
             				for (Statement statement : methodBlock.get().getStatements()) {
-            					methodContent.append(statement.toString().replaceAll("[^A-Za-z ]", " ").trim().toLowerCase() + "\n");
+            					String statementContent = statement.toString().replaceAll("[^A-Za-z ]", " ").trim();
+            					methodContent.append(parseCamelCase(statementContent).toLowerCase() + "\n");
             				}
             			}
             			// Add the method's document to the writer
@@ -108,6 +117,10 @@ public class Indexer {
         				document.add(new TextField("content", new StringReader(methodContent.toString())));
         				System.out.println("Doc=" + i + ", name=" + method.getName().asString());
         				writer.addDocument(document);
+        				if (testDocuments.containsValue(methodName)) {
+        					System.out.println("***WARNING***: Found an overloaded test method: [" + methodName + "]");
+        				}
+        				testDocuments.put(i, methodName);
         				i++;
             		}
             	}
@@ -142,8 +155,22 @@ public class Indexer {
         return searcher.search(query, numResults);
 	}
 	
+	public String getDocumentById(int id) {
+		return testDocuments.get(id);
+	}
+	
 	public void close() throws IOException { 
 		writer.close();
 		reader.close();
+	}
+	
+	public static String parseCamelCase(String s) {
+		StringBuilder result = new StringBuilder();
+		// Regex from https://stackoverflow.com/questions/7593969/regex-to-split-camelcase-or-titlecase-advanced
+		for (String w : s.split("(?<!(^|[A-Z]))(?=[A-Z])|(?<!^)(?=[A-Z][a-z])")) {
+	        result.append(w);
+	        result.append(" ");
+	    }
+		return result.toString();
 	}
 }
