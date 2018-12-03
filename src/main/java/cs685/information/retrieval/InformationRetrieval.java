@@ -1,7 +1,9 @@
 package cs685.information.retrieval;
 
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URISyntaxException;
@@ -20,13 +22,8 @@ import org.apache.lucene.search.TopDocs;
 
 import com.github.javaparser.JavaParser;
 import com.github.javaparser.ast.CompilationUnit;
-import com.github.javaparser.ast.NodeList;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.MethodDeclaration;
-import com.github.javaparser.ast.body.Parameter;
-import com.github.javaparser.ast.comments.Comment;
-import com.github.javaparser.ast.stmt.BlockStmt;
-import com.github.javaparser.ast.stmt.Statement;
 
 import io.reflectoring.diffparser.api.DiffParser;
 import io.reflectoring.diffparser.api.UnifiedDiffParser;
@@ -37,11 +34,92 @@ import io.reflectoring.diffparser.api.model.Range;
 
 public class InformationRetrieval 
 {
+	private static Set<String> stopwords;
+	private static Set<String> keywords;
+	
+	private static class Query {
+		private String classes;
+		private String methods;
+		private String query;
+		public Query(String classes, String methods, String query) {
+			this.classes = classes;
+			this.methods = methods;
+			this.query = query;
+		}
+		public String getClasses() {
+			return this.classes;
+		}
+		public String getMethods() {
+			return this.methods;
+		}
+		public String getQuery() {
+			return this.query;
+		}
+		public String getCoverages() {
+			StringBuilder sb = new StringBuilder();
+			sb.append("(");
+			sb.append(this.classes);
+			sb.append(")#(");
+			sb.append(this.methods);
+			sb.append(")");
+			return sb.toString();
+		}
+		@Override
+		public String toString() {
+			StringBuilder sb = new StringBuilder();
+			sb.append(this.getCoverages());
+			sb.append(" covered by query: [");
+			sb.append(this.query);
+			sb.append("]");
+			return sb.toString();
+		}
+	}
+	
+	public static String removeStopwords(String s) {
+		StringBuilder modifiedStr = new StringBuilder();
+		for (String part : s.split("\\s+")) {
+			if (!stopwords.contains(part) && part.length() > 1) {
+				modifiedStr.append(part);
+				modifiedStr.append(" ");
+			}
+		}
+		return modifiedStr.toString();
+	}
+	
+	public static String removeStopwordsAndKeywords(String s) {
+		StringBuilder modifiedStr = new StringBuilder();
+		for (String part : s.split("\\s+")) {
+			// Check if len > 1 to avoid variables named "i", etc.
+			if (!stopwords.contains(part) && !keywords.contains(part) && part.length() > 1) {
+				modifiedStr.append(part);
+				modifiedStr.append(" ");
+			}
+		}
+		return modifiedStr.toString();
+	}
+	
     public static void main(String[] args) throws URISyntaxException, IOException, ParseException {
+    	// Load stopwords and keywords
+    	stopwords = new HashSet<String>();
+    	keywords = new HashSet<String>();
+    	File stopwordsFile = new File("stopwords.txt");
+    	File keywordsFile = new File("keywords.txt");
+    	try(BufferedReader br = new BufferedReader(new FileReader(stopwordsFile))) {
+    	    for(String line; (line = br.readLine()) != null; ) {
+    	        stopwords.add(line.replaceAll("\\'", ""));
+    	    }
+    	}
+    	try(BufferedReader br = new BufferedReader(new FileReader(keywordsFile))) {
+    	    for(String line; (line = br.readLine()) != null; ) {
+    	        keywords.add(line);
+    	    }
+    	}
+    	
+    	// Parse the diff
     	DiffParser parser = new UnifiedDiffParser();
         InputStream in = new FileInputStream("C:\\Users\\smoke\\Documents\\CS 685\\cs685-2018\\information-retrieval\\input\\test.diff");
         List<Diff> diffs = parser.parse(in);
-        List<String> queries = new ArrayList<String>();
+        List<Query> queries = new ArrayList<Query>();
         for (Diff diff : diffs) {
         	Map<String, List<Range>> classToRange = new HashMap<String, List<Range>>();
         	Map<String, List<Range>> methodToRange = new HashMap<String, List<Range>>();
@@ -106,16 +184,22 @@ public class InformationRetrieval
                 io.reflectoring.diffparser.api.model.Range lineRange = hunk.getToFileRange();
                 int startLine = lineRange.getLineStart();
                 int endLine = startLine + lineRange.getLineCount();
+                System.out.println("Hunk start=" + startLine +", end=" + endLine);
                 // Find all classes and methods contained in these lines
                 Set<String> classes = new HashSet<String>();
                 Set<String> methods = new HashSet<String>();
+                Set<String> unparsedClasses = new HashSet<String>();
+                Set<String> unparsedMethods = new HashSet<String>();
                 for (String className : classToRange.keySet()) {
                 	for (Range r : classToRange.get(className)) {
                 		int begin = r.getLineStart();
                 		int end = begin + r.getLineCount();
+                		System.out.println("Method="+className+" ("+begin+", "+end+")");
                 		// Find if our hunk block intersects with this class's block
                 		if ((startLine >= begin && startLine <= end) || (endLine >= begin && endLine <= end)) {
-                			classes.add(Indexer.parseCamelCase(className).toLowerCase());
+                			unparsedClasses.add(className);
+                			String parsedClassName = Indexer.parseCamelCase(className).toLowerCase();
+                			classes.add(removeStopwords(parsedClassName));
                 		}
                 	}
                 }
@@ -123,9 +207,12 @@ public class InformationRetrieval
                 	for (Range r : methodToRange.get(methodName)) {
                 		int begin = r.getLineStart();
                 		int end = begin + r.getLineCount();
+                		System.out.println("Method="+methodName+" ("+begin+", "+end+")");
                 		// Find if our hunk block intersects with this class's block
                 		if ((startLine >= begin && startLine <= end) || (endLine >= begin && endLine <= end)) {
-                			methods.add(Indexer.parseCamelCase(methodName).toLowerCase());
+                			unparsedMethods.add(methodName);
+                			String parsedMethodName = Indexer.parseCamelCase(methodName).toLowerCase();
+                			methods.add(removeStopwords(parsedMethodName));
                 		}
                 	}
                 }
@@ -133,8 +220,8 @@ public class InformationRetrieval
                 System.out.println("Hunk intersects with methods: " + methods.toString());
                 // Create a query based on the hunk (hunk's content, methods hunk is in, classes hunk is in)
                 StringBuilder query = new StringBuilder();
-                query.append(String.join(" ", classes) + " ");
-                query.append(String.join(" ", methods) + " ");
+                query.append(String.join(" ", classes));
+                query.append(String.join(" ", methods));
                 List<String> toLines = new ArrayList<String>();
                 List<String> fromLines = new ArrayList<String>();
                 // Find all TO and FROM lines in the hunk
@@ -152,21 +239,26 @@ public class InformationRetrieval
                 	// Remove punctuation
                 	line = line.replaceAll("[^A-Za-z\\s]",  " ");
                 	line = Indexer.parseCamelCase(line.trim()).toLowerCase();
-        			query.append(line + " ");
+                	// Parse out stopwords and Java keywords
+        			query.append(removeStopwordsAndKeywords(line));
                 }
-                queries.add(query.toString());
+                queries.add(new Query(
+                		String.join(", ", unparsedClasses),
+                		String.join(", ", unparsedMethods),
+                		query.toString()));
             }
         }
         System.out.println("Queries:");
-        for (String query : queries) {
+        for (Query query : queries) {
         	System.out.println("\t" + query);
         }
         // Loop over all our queries
     	Indexer indexer = new Indexer();
-    	for (String query : queries) {
+    	for (Query query : queries) {
     		// Find top n documents
-    		TopDocs results = indexer.query(query, 5);
-    		System.out.println("Query: ["+query+"]");
+    		TopDocs results = indexer.query(query.getQuery(), 5);
+    		System.out.println("Query: ["+query.getQuery()+"]");
+    		System.out.println("\tCovers: " + query.getCoverages());
     		System.out.println("\tResults: " + results.totalHits);
     		for (ScoreDoc doc : results.scoreDocs) {
     			System.out.println("\t" + doc);
