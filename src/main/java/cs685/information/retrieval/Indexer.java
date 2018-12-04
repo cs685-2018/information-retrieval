@@ -3,8 +3,8 @@ package cs685.information.retrieval;
 import java.io.File;
 import java.io.IOException;
 import java.io.StringReader;
+import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -44,155 +44,140 @@ public class Indexer {
 	private IndexReader reader;
 	private IndexSearcher searcher;
 	private QueryParser parser;
-	//private StandardAnalyzer standardAnalyzer;
+	// private StandardAnalyzer standardAnalyzer;
 	private Map<Integer, String> testDocuments;
-	
+
 	public Indexer() throws IOException {
 		// Create a map of document ID to test method name
 		testDocuments = new HashMap<Integer, String>();
 		// New index
 		StandardAnalyzer standardAnalyzer = new StandardAnalyzer();
-		File inputDir = new File("C:\\Users\\smoke\\Documents\\CS 685\\cs685-2018\\information-retrieval\\input");
-        String outputDir = "C:\\Users\\smoke\\Documents\\CS 685\\cs685-2018\\information-retrieval\\output";
- 
-        Directory directory = FSDirectory.open(Paths.get(outputDir));
-        IndexWriterConfig config = new IndexWriterConfig(standardAnalyzer);
-        // Check if we can load from file
-        if (DirectoryReader.indexExists(directory)) {
-        	writer = new IndexWriter(directory, config);
-        	return; // Don't re-add all Test files to index
-        }
-        // Create a writer
-        writer = new IndexWriter(directory, config);
-        
-        config.setOpenMode(OpenMode.CREATE);
-        // Iterate over the entire directory
-        Stack<File> inputFiles = new Stack<File>();
-        inputFiles.addAll(Arrays.asList(inputDir.listFiles()));
-        int docId = 0;
-        while (!inputFiles.isEmpty()) {
-        	File path = inputFiles.pop();
-            if (path.isDirectory()) {
-            	// If directory, add all content within it to the stack
-                inputFiles.addAll(Arrays.asList(path.listFiles()));
-            } else if (path.getName().endsWith(".java")) {
-            	// If a java file, parse it.
-            	CompilationUnit cu = JavaParser.parse(path);
-            	// Get the class name
-            	List<ClassOrInterfaceDeclaration> classes = cu.findAll(ClassOrInterfaceDeclaration.class);
-            	for (ClassOrInterfaceDeclaration classDeclaration : classes) {
-            		// Get class name and parse it
-            		String className = classDeclaration.getName().asString(); // Keep class name unparsed for future use
-            		// Parse class name to add to NL documents
-            		String parsedClassName = parseCamelCase(className).toLowerCase();
-            		parsedClassName = InformationRetrieval.removeStopwords(parsedClassName);
-            		List<MethodDeclaration> methods = classDeclaration.getChildNodesByType(MethodDeclaration.class);
-            		for (MethodDeclaration method : methods) {
-            			boolean isTestCase = false;
-                		NodeList<AnnotationExpr> annotations = method.getAnnotations();
-                		for (AnnotationExpr annotation : annotations) {
-                			if (annotation.getNameAsString().equals("Test")) {
-                				isTestCase = true;
-                				break;
-                			}
-                		}
-                		if (isTestCase) {
-                			StringBuilder methodContent = new StringBuilder();
-                			// Get the method's class name
-                			methodContent.append(parsedClassName);
-                			methodContent.append("\n");
-                			// Get method's name
-                			String methodName = method.getName().asString(); // The real method name is needed later
-                			String methodNameParsed = parseCamelCase(methodName).toLowerCase();
-                			methodContent.append(InformationRetrieval.removeStopwords(methodNameParsed));
-                			methodContent.append("\n");
-                			// Get method's parameters
-                			for (Parameter param : method.getParameters()) {
-                				String params = param.toString().replaceAll("[^A-Za-z ]", " ").trim();
-                				params = parseCamelCase(params).toLowerCase();
-                                methodContent.append(InformationRetrieval.removeStopwords(params));
-                                methodContent.append(" ");
-                            }
-                			// Get method's documentation
-                			Optional<Comment> javadocComment = method.getComment();
-                			if (javadocComment.isPresent()) {
-                				String javadoc = javadocComment.get().getContent();
-                				javadoc = javadoc.replaceAll("[^A-Za-z ]", " ").trim();
-                				javadoc = parseCamelCase(javadoc).toLowerCase();
-                				methodContent.append(InformationRetrieval.removeStopwordsAndKeywords(javadoc));
-                				methodContent.append("\n");
-                			}
-                			// Get method's content
-                			Optional<BlockStmt> methodBlock = method.getBody();
-                			if (methodBlock.isPresent()) {
-                				for (Statement statement : methodBlock.get().getStatements()) {
-                					String statementContent = statement.toString().replaceAll("[^A-Za-z ]", " ").trim();
-                					statementContent = parseCamelCase(statementContent).toLowerCase();
-                					methodContent.append(InformationRetrieval.removeStopwordsAndKeywords(statementContent));
-                					methodContent.append("\n");
-                				}
-                			}
-                			// Add the method's document to the writer
-            				Document document = new Document();
-            				//document.add(new TextField(method.getName().asString() + " content", new StringReader(methodContent.toString())));
-            				document.add(new TextField("content", new StringReader(methodContent.toString())));
-            				System.out.println("Doc=" + docId + ", name=" + method.getName().asString());
-            				writer.addDocument(document);
-            				if (testDocuments.containsValue(methodName)) {
-            					System.out.println("***WARNING***: Found an overloaded test method: [" + methodName + "]");
-            				}
-            				testDocuments.put(docId, className + "." + methodName);
-            				docId++;
-                		}
-            		}
-            	}
-            } else {
-            	System.out.println("Ignoring non-Java file: [" + path.getName() + "]");
-            }
-        }
-        
-        try {
-        	File[] directoryListing = inputDir.listFiles();
-    		if (directoryListing != null) {
-    			for (File child : directoryListing) {
-    				
-    			}
-    		} else {
-    			System.out.println(inputDir.getPath() + " is not a directory!");
-    			return;
-    		}
-        	writer.close();
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
- 
-        // Now let's try to search for Hello
-        reader = DirectoryReader.open(directory);
-        searcher = new IndexSearcher(reader);
-        parser = new QueryParser("content", standardAnalyzer);
+		File inputDir = new File("input");
+		File outputDir = new File("output");
+
+		Directory directory = FSDirectory.open(Paths.get(outputDir.getAbsolutePath()));
+		IndexWriterConfig config = new IndexWriterConfig(standardAnalyzer);
+		// Check if we can load from file
+		if (DirectoryReader.indexExists(directory)) {
+			writer = new IndexWriter(directory, config);
+			return; // Don't re-add all Test files to index
+		}
+		// Create a writer
+		writer = new IndexWriter(directory, config);
+
+		config.setOpenMode(OpenMode.CREATE);
+		// Iterate over the entire directory
+		Stack<File> inputFiles = new Stack<File>();
+		inputFiles.addAll(Arrays.asList(inputDir.listFiles()));
+		int docId = 0;
+		while (!inputFiles.isEmpty()) {
+			File path = inputFiles.pop();
+			if (path.isDirectory()) {
+				// If directory, add all content within it to the stack
+				inputFiles.addAll(Arrays.asList(path.listFiles()));
+			} else if (path.getName().endsWith(".java")) {
+				// If a java file, parse it.
+				CompilationUnit cu = JavaParser.parse(path);
+				// Get the class name
+				List<ClassOrInterfaceDeclaration> classes = cu.findAll(ClassOrInterfaceDeclaration.class);
+				for (ClassOrInterfaceDeclaration classDeclaration : classes) {
+					// Get class name and parse it
+					String className = classDeclaration.getName().asString(); // Keep class name unparsed for future use
+					// Parse class name to add to NL documents
+					String parsedClassName = parseCamelCase(className).toLowerCase();
+					parsedClassName = InformationRetrieval.removeStopwords(parsedClassName);
+					List<MethodDeclaration> methods = classDeclaration.getChildNodesByType(MethodDeclaration.class);
+					for (MethodDeclaration method : methods) {
+						boolean isTestCase = false;
+						NodeList<AnnotationExpr> annotations = method.getAnnotations();
+						for (AnnotationExpr annotation : annotations) {
+							if (annotation.getNameAsString().equals("Test")) {
+								isTestCase = true;
+								break;
+							}
+						}
+						if (isTestCase) {
+							StringBuilder methodContent = new StringBuilder();
+							// Get the method's class name
+							methodContent.append(parsedClassName);
+							methodContent.append("\n");
+							// Get method's name
+							String methodName = method.getName().asString(); // The real method name is needed later
+							String methodNameParsed = parseCamelCase(methodName).toLowerCase();
+							methodContent.append(InformationRetrieval.removeStopwords(methodNameParsed));
+							methodContent.append("\n");
+							// Get method's parameters
+							for (Parameter param : method.getParameters()) {
+								String params = param.toString().replaceAll("[^A-Za-z ]", " ").trim();
+								params = parseCamelCase(params).toLowerCase();
+								methodContent.append(InformationRetrieval.removeStopwords(params));
+								methodContent.append(" ");
+							}
+							// Get method's documentation
+							Optional<Comment> javadocComment = method.getComment();
+							if (javadocComment.isPresent()) {
+								String javadoc = javadocComment.get().getContent();
+								javadoc = javadoc.replaceAll("[^A-Za-z ]", " ").trim();
+								javadoc = parseCamelCase(javadoc).toLowerCase();
+								methodContent.append(InformationRetrieval.removeStopwordsAndKeywords(javadoc));
+								methodContent.append("\n");
+							}
+							// Get method's content
+							Optional<BlockStmt> methodBlock = method.getBody();
+							if (methodBlock.isPresent()) {
+								for (Statement statement : methodBlock.get().getStatements()) {
+									String statementContent = statement.toString().replaceAll("[^A-Za-z ]", " ").trim();
+									statementContent = parseCamelCase(statementContent).toLowerCase();
+									methodContent.append(InformationRetrieval.removeStopwordsAndKeywords(statementContent));
+									methodContent.append("\n");
+								}
+							}
+							// Add the method's document to the writer
+							Document document = new Document();
+							// document.add(new TextField(method.getName().asString() + " content", new StringReader(methodContent.toString())));
+							document.add(new TextField("content", new StringReader(methodContent.toString())));
+							System.out.println("Doc=" + docId + ", name=" + method.getName().asString());
+							writer.addDocument(document);
+							if (testDocuments.containsValue(methodName)) {
+								System.out.println("***WARNING***: Found an overloaded test method: [" + methodName + "]");
+							}
+							testDocuments.put(docId, className + "." + methodName);
+							docId++;
+						}
+					}
+				}
+			} else {
+				System.out.println("Ignoring non-Java file: [" + path.getName() + "]");
+			}
+		}
+
+		writer.commit(); // commits pending documents to index
+		reader = DirectoryReader.open(directory);
+		searcher = new IndexSearcher(reader);
+		parser = new QueryParser("content", standardAnalyzer);
 	}
-	
+
 	public TopDocs query(String queryString, int numResults) throws ParseException, IOException {
-        Query query = parser.parse(queryString);
-        return searcher.search(query, numResults);
+		Query query = parser.parse(queryString);
+		return searcher.search(query, numResults);
 	}
-	
+
 	public String getDocumentById(int id) {
 		return testDocuments.get(id);
 	}
-	
-	public void close() throws IOException { 
+
+	public void close() throws IOException {
 		writer.close();
 		reader.close();
 	}
-	
+
 	public static String parseCamelCase(String s) {
 		StringBuilder result = new StringBuilder();
 		// Regex from https://stackoverflow.com/questions/7593969/regex-to-split-camelcase-or-titlecase-advanced
 		for (String w : s.split("(?<!(^|[A-Z]))(?=[A-Z])|(?<!^)(?=[A-Z][a-z])")) {
-	        result.append(w);
-	        result.append(" ");
-	    }
+			result.append(w);
+			result.append(" ");
+		}
 		return result.toString();
 	}
 }
