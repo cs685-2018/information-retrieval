@@ -19,17 +19,26 @@
       <version>3.8.1</version>
       <scope>test</scope>
     </dependency>
-    <!-- https://mvnrepository.com/artifact/org.apache.lucene/lucene-core -->
+    <!-- Apache Lucene -->
 	<dependency>
 		<groupId>org.apache.lucene</groupId>
 		<artifactId>lucene-core</artifactId>
-		<version>7.5.0</version>
+		<version>5.3.1</version>
 	</dependency>
-	<!-- https://mvnrepository.com/artifact/org.apache.lucene/lucene-queryparser -->
 	<dependency>
-	    <groupId>org.apache.lucene</groupId>
-	    <artifactId>lucene-queryparser</artifactId>
-	    <version>7.5.0</version>
+		<groupId>org.apache.lucene</groupId>
+		<artifactId>lucene-analyzers-common</artifactId>
+		<version>5.3.1</version>
+	</dependency>
+	<dependency>
+		<groupId>org.apache.lucene</groupId>
+		<artifactId>lucene-queryparser</artifactId>
+		<version>5.3.1</version>
+	</dependency>
+	<dependency>
+		<groupId>org.apache.lucene</groupId>
+		<artifactId>lucene-highlighter</artifactId>
+		<version>5.3.1</version>
 	</dependency>
 	<dependency>
 	    <groupId>com.github.javaparser</groupId>
